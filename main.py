@@ -5,6 +5,17 @@ from mytoken import Mytoken
 
 conn = sqlite3.connect('users.db')
 cursor = conn.cursor()
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS warnings (
+        user_id TEXT PRIMARY KEY,
+        warning_1 BOOLEAN DEFAULT FALSE,
+        warning_2 BOOLEAN DEFAULT FALSE,
+        reason_1 TEXT,
+        reason_2 TEXT,
+        time_1 DATETIME,
+        time_2 DATETIME
+    )
+''')
 
 # Intents 설정
 intents = discord.Intents.default()
