@@ -27,6 +27,9 @@ intents.members = True  # 서버 멤버 정보 접근 권한 활성화
 # Bot 초기화
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+def formattime(dbtime): #utc 기준으로 시간 변환
+    return datetime.fromtimestamp(dbtime / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
 @bot.event
 async def on_ready():
     print(f'Login bot: {bot.user}')
@@ -57,14 +60,14 @@ async def 경고(ctx, uid: int = None):
         if result:
             if result[0]:#bool 데이터
                 embed.add_field(name="경고 1:", value=result[2], inline=False)
-                embed.add_field(name="일시", value=(datetime.fromtimestamp(result[4] / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')), inline=False) #utc 기준으로 시간 변환
+                embed.add_field(name="일시", value=formattime(result[4]), inline=False)
             else:#경고 삭감으로 없을 경우
                 embed.add_field(name="경고 없음", value=" ", inline=False)
 
             if result[1]:
                 embed.add_field(name="\u200b", value="\u200b", inline=False)  # 빈 줄 추가
                 embed.add_field(name="경고 2:", value=result[3], inline=False)
-                embed.add_field(name="일시", value=(datetime.fromtimestamp(result[5] / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')), inline=False)
+                embed.add_field(name="일시", value=formattime(result[5]), inline=False)
 
         else:
             embed.add_field(name="경고 기록 없음", value=" ", inline=False)
