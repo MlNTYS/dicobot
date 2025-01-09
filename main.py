@@ -25,9 +25,13 @@ intents.messages = True
 intents.message_content = True  # 메시지 콘텐츠 접근 권한 활성화
 intents.members = True  # 서버 멤버 정보 접근 권한 활성화
 intents.reactions = True  # 반응 처리 관련 접근 권한 활성화
+intents.guilds = True # 권한 처리 관련 접근 권한 활성화
 
 # Bot 초기화
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+warn_role1 = None
+warn_role2 = None
 
 # 관리자 권한 확인을 위한 데코레이터
 def is_admin():
@@ -39,20 +43,51 @@ def is_admin():
 def formattime(dbtime):
     return datetime.fromtimestamp(dbtime / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
-async def add_warning(ctx, uid, warnflag):
-    await ctx.send(f"ID {uid}에 해당하는 유저의 경고 추가.")
+async def add_warning(ctx, uid, warnflag, member):
+    if warnflag == 0:  # 경고가 0개 일때 추가
+        await member.add_roles(warn_role1)  # 경고(1) 추가
 
-async def reduce_warning(ctx, uid, warnflag):
-    if warnflag == 2:
+        # DB 업데이트
+        cursor.execute("UPDATE warnings SET warning_1 = TRUE WHERE user_id = ?", (uid,))
+        conn.commit()
 
-    else:
+        await ctx.send(f"ID {uid}에 해당하는 유저에 경고(1) 추가.")
+    else:  # 경고가 1개 일때 추가
+        await member.add_roles(warn_role2)  # 경고(1) 추가
 
+        cursor.execute("UPDATE warnings SET warning_2 = TRUE WHERE user_id = ?", (uid,))
+        conn.commit()
 
-async def ban_user(ctx, uid):
+        await ctx.send(f"ID {uid}에 해당하는 유저에 경고(2) 추가.")
+
+async def reduce_warning(ctx, uid, warnflag, member):
+    if warnflag == 2: # 경고가 2개 일때 삭감
+        await member.remove_roles(warn_role2) # 경고(2) 빼기
+
+        # DB 업데이트
+        cursor.execute("UPDATE warnings SET warning_2 = FALSE WHERE user_id = ?", (uid,))
+        conn.commit()
+
+        await ctx.send(f"ID {uid}에 해당하는 유저의 경고(2) 삭감.")
+    else: # 경고가 1개 일때 삭감
+        await member.remove_roles(warn_role1) # 경고(1) 빼기
+
+        cursor.execute("UPDATE warnings SET warning_1 = FALSE WHERE user_id = ?", (uid,))
+        conn.commit()
+
+        await ctx.send(f"ID {uid}에 해당하는 유저의 경고(1) 삭감.")
+
+async def ban_user(ctx, uid, member):
     await ctx.send(f"ID {uid}에 해당하는 유저를 추방.")
 
 @bot.event
 async def on_ready():
+    global warn_role1, warn_role2  # 전역 변수로 접근
+
+    # 봇 실행 시 경고 1,2 role를 찾아 저장하기
+    for guild in bot.guilds:
+        warn_role1 = discord.utils.get(guild.roles, name="경고(1)")
+        warn_role2 = discord.utils.get(guild.roles, name="경고(2)")
     print(f'Login bot: {bot.user}')
 
 
@@ -68,9 +103,9 @@ async def 경고(ctx, uid: int = None):
     member = ctx.guild.get_member(uid)
 
     if member:  # 멤버가 존재하면
-        warnflag = 0 #유저 정보에 반응 추가를 위한 flag
+        warnflag = 0 # 유저 정보에 반응 추가를 위한 flag
 
-        def check(reaction, user): #확인에서의 딜레이 최소화를 위해 유저가 기다릴 수 있는 확인 단계에서 def
+        def check(reaction, user): # 확인에서의 딜레이 최소화를 위해 유저가 기다릴 수 있는 확인 단계에서 def
             # 반응이 지정된 이모지 중 하나이며 메시지를 보낸 유저만 체크
             return (
                     user == ctx.author
@@ -78,8 +113,8 @@ async def 경고(ctx, uid: int = None):
                     and reaction.message.id == msg.id
             )
 
-        cursor.execute("SELECT warning_1, warning_2, reason_1, reason_2, time_1, time_2 FROM warnings WHERE user_id = ?", (uid,)) #DB에서 유저 결과 가져오기
-        result = cursor.fetchone() #결과를 result에 저장
+        cursor.execute("SELECT warning_1, warning_2, reason_1, reason_2, time_1, time_2 FROM warnings WHERE user_id = ?", (uid,)) # DB에서 유저 결과 가져오기
+        result = cursor.fetchone() # 결과를 result에 저장
 
         embed = discord.Embed(title="유저 정보", color=discord.Color.blue())
         embed.add_field(name="닉네임", value=member.display_name, inline=True)
@@ -88,13 +123,13 @@ async def 경고(ctx, uid: int = None):
         embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
         embed.add_field(name="\u200b", value="\u200b", inline=False)  # 빈 줄 추가
 
-        #DB 결과로 출력
+        # DB 결과로 출력
         if result:
-            if result[0]:#bool 데이터
+            if result[0]:# bool 데이터
                 embed.add_field(name="경고 1:", value=result[2], inline=False)
                 embed.add_field(name="일시", value=formattime(result[4]), inline=False)
                 warnflag = 1
-            else:#경고 삭감으로 없을 경우
+            else:# 경고 삭감으로 없을 경우
                 embed.add_field(name="경고 없음", value=" ", inline=False)
                 warnflag = 0
 
@@ -111,15 +146,15 @@ async def 경고(ctx, uid: int = None):
         await ctx.send(embed=embed)
 
         msg = await ctx.send("원하는 행동을 선택해 주세요 60초...(경고 추가/삭감, 유저 추방)") # 메시지 보내기
-        match warnflag: #warnflaf에 맞게 반응 추가
+        match warnflag: # warnflaf에 맞게 반응 추가
             case 0:
-                await msg.add_reaction("\U00002B06")  #경고 추가
+                await msg.add_reaction("\U00002B06")  # 경고 추가
             case 1:
-                await msg.add_reaction("\U00002B07")  #경고 삭감
-                await msg.add_reaction("\U00002B06")  #경고 추가
+                await msg.add_reaction("\U00002B07")  # 경고 삭감
+                await msg.add_reaction("\U00002B06")  # 경고 추가
             case 2:
-                await msg.add_reaction("\U00002B07")  #경고 삭감
-                await msg.add_reaction("\U0001F6AB") #유저 추방
+                await msg.add_reaction("\U00002B07")  # 경고 삭감
+                await msg.add_reaction("\U0001F6AB") # 유저 추방
 
         try:
             # 반응 대기 (timeout: 60초)
@@ -131,11 +166,11 @@ async def 경고(ctx, uid: int = None):
             # 선택된 반응에 따른 기능 실행
             match str(reaction.emoji):
                 case "\U00002B06":  # 경고 추가
-                    await add_warning(ctx, uid, warnflag)
+                    await add_warning(ctx, uid, warnflag, member)
                 case "\U00002B07":  # 경고 삭감
-                    await reduce_warning(ctx, uid, warnflag)
+                    await reduce_warning(ctx, uid, warnflag, member)
                 case "\U0001F6AB":  # 유저 추방
-                    await ban_user(ctx, uid)
+                    await ban_user(ctx, uid, member)
         except asyncio.TimeoutError:
             # 시간 초과 시 메시지 삭제
             await msg.delete()
