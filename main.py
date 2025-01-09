@@ -257,4 +257,11 @@ async def 경고(ctx, uid: int = None):
     else:  # 멤버가 없을 경우
         await ctx.send(f"ID {uid}에 해당하는 유저를 찾을 수 없습니다.")
 
+@bot.command()
+@is_admin() #관리자 권한 확인
+async def upload(ctx):
+    file = discord.File("users.db", filename="users.db")
+    await ctx.send("DB file:", file=file)
+
+
 bot.run(Mytoken)
